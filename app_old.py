@@ -1,45 +1,57 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import os
+import telebot
+import requests
+from dotenv import load_dotenv
+load_dotenv()
 
-token = "7190983775:AAHTFGuibts5CNlUUL4jA4IHHbzXi7CX8jY"
-async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(f'Hello {update.effective_user.first_name}'
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
-app = ApplicationBuilder().token(token).build()
+bot = telebot.TeleBot(BOT_TOKEN)
 
-app.add_handler(CommandHandler("hello", hello))
+@bot.message_handler(commands=['start', 'hello'])
+def send_welcome(message):
+    bot.reply_to(message, "Howdy, how are you doing?")
 
-app.run_polling()
+def get_daily_horoscope(sign: str, day: str) -> dict:
+    """Get daily horoscope for a zodiac sign.
+    Keyword arguments:
+    sign:str - Zodiac sign
+    day:str - Date in format (YYYY-MM-DD) OR TODAY OR TOMORROW OR YESTERDAY
+    Return:dict - JSON data
+    """
+    url = "https://horoscope-app-api.vercel.app/api/v1/get-horoscope/daily"
+    params = {"sign": sign, "day": day}
+    response = requests.get(url, params)
 
-# import telegram.ext
-# from telegram.ext import Updater, CommandHandler
-# from queue import Queue
-#
-#
-# update_queue = Queue() # Create queue instance
-# token = "7190983775:AAHTFGuibts5CNlUUL4jA4IHHbzXi7CX8jY"
-# updater = telegram.ext.Updater("7190983775:AAHTFGuibts5CNlUUL4jA4IHHbzXi7CX8jY", update_queue=update_queue)
-# dispatcher1 = updater.dispatcher
-#
-# def  start(bot, update):
-#     # bot.send_message(update.message.chat_id,"Hello")
-#     bot.message.reply_text('Hi! I am parth')
-#
-# def help(bot, update):
-#     update.message.reply_text(
-#         """
-#         /start -> welcome
-#         /help -> what help can i do
-#         /content -. to see content
-#         """
-#     )
-#
-# def content(bot, update):
-#     update.message.reply_text("i am parth from content")
-#
-# dispatcher.add_handler(telegram.ext.CommandHandler("start", start))
-# dispatcher.add_handler(telegram.ext.CommandHandler("help", help))
-# dispatcher.add_handler(telegram.ext.CommandHandler("content", content))
-#
-# updater.start_polling()
-# updater.idle()
+    return response.json()
+
+def day_handler(message):
+    sign = message.text
+    text = "What day do you want to know?\nChoose one: *TODAY*, *TOMORROW*, *YESTERDAY*, or a date in format YYYY-MM-DD."
+    sent_msg = bot.send_message(
+        message.chat.id, text, parse_mode="Markdown")
+    bot.register_next_step_handler(
+        sent_msg, fetch_horoscope, sign.capitalize())
+
+def fetch_horoscope(message, sign):
+    day = message.text
+    horoscope = get_daily_horoscope(sign, day)
+    data = horoscope["data"]
+    horoscope_message = f'*Horoscope:* {data["horoscope_data"]}\n*Sign:* {sign}\n*Day:* {data["date"]}'
+    bot.send_message(message.chat.id, "Here's your horoscope!")
+    bot.send_message(message.chat.id, horoscope_message, parse_mode="Markdown")
+
+
+@bot.message_handler(commands=['horoscope'])
+def sign_handler(message):
+    text = "What's your zodiac sign?\nChoose one: *Aries*, *Taurus*, *Gemini*, *Cancer,* *Leo*, *Virgo*, *Libra*, *Scorpio*, *Sagittarius*, *Capricorn*, *Aquarius*, and *Pisces*."
+    sent_msg = bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    bot.register_next_step_handler(sent_msg, day_handler)
+
+
+@bot.message_handler(func=lambda msg: True)
+def echo_all(message):
+    bot.reply_to(message, message.text)
+
+
+bot.infinity_polling()
